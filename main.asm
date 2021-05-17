@@ -39,32 +39,37 @@
 .const
 	ICONE	equ     500
 	WM_FINISH equ WM_USER+100h
-	img1    equ     100
-	img2    equ     101
-	img3    equ     103
 
-	CREF_TRANSPARENT  EQU 00FFFFFFh
+	sprites	equ		107
+
+	cropBgW	equ		331
+	cropBgH	equ		589
+
+	cropBirdX	equ	607
+	cropBirdY	equ	147
+	cropBirdW	equ	38
+	cropBirdH	equ	27
+
+	CREF_TRANSPARENT  equ 0082597Bh ; Isso filtra as cores de uma imagem
 
 .data
-	szDisplayName db "Flappy Bird",0
-	CommandLine   dd 0
-	hWnd          dd 0
-	hInstance     dd 0
-	buffer        db 128 dup(0)
-	X             dd 0
-	Y             dd 0
-	msg1          db "Mandou uma mensagem Ok",0
-	contador      dd 0
-	imgY          dd 100
+	szDisplayName	db "Flappy Bird",0 ; esse sera o titulo da janela
+	CommandLine		dd 0
+	hWnd			dd 0
+	hInstance		dd 0
+	buffer			db 128 dup(0)
+	birdX			dd 140 ; essa variavel sera utilizada para determinar a posicao do nosso passaro
+	birdY			dd 200 ;  essa variavel sera utilizada para determinar a posicao do nosso passaro
+	msg1			db "Mandou uma mensagem Ok",0
+	contador		dd 0 ;
+	imgY			dd 100 ; so precisamos do y por que o passaro nao sai do lugar, o cenario se move para tras mas ele nao percorre o eixo x
 
 .data?
-	hitpoint    POINT <>
-	hitpointEnd POINT <>
-	threadID    DWORD ?
-	hEventStart HANDLE ?
-	hBmp        dd ?
-	hBmpImg        dd ?
-	hBmpHommer dd ?
+	hitpoint	POINT <>
+	hitpointEnd	POINT <>
+	threadID	DWORD ?
+	hEventStart	HANDLE ?
+	hBmpSprites	dd ?
 
 ; ============================================================
 
@@ -78,14 +83,8 @@ start:
 	mov		CommandLine, eax
 
 	; ====== carregar bitmaps ======
-	invoke	LoadBitmap, hInstance, img1
-	mov		hBmp, eax
-
-	invoke	LoadBitmap, hInstance, img2
-	mov		hBmpImg, eax
-
-	invoke	LoadBitmap, hInstance, img3
-	mov		hBmpHommer, eax
+	invoke	LoadBitmap, hInstance, sprites
+	mov		hBmpSprites, eax
 	; ==============================
 
 	invoke	WinMain,hInstance,NULL,CommandLine,SW_SHOWDEFAULT	; carregar janela
@@ -106,8 +105,8 @@ WinMain proc hInst	:DWORD,
 	LOCAL wc   :WNDCLASSEX
 	LOCAL msg  :MSG
 
-	LOCAL Wwd  :DWORD
-	LOCAL Wht  :DWORD
+	LOCAL WWidth  :DWORD
+	LOCAL WHeigth  :DWORD
 	LOCAL Wtx  :DWORD
 	LOCAL Wty  :DWORD
 
@@ -140,15 +139,15 @@ WinMain proc hInst	:DWORD,
 	; Centre window at following size
 	;================================
 
-	mov Wwd, 500
-	mov Wht, 350
+	mov WWidth, cropBgW ; largura da janela (windows width)
+	mov WHeigth, cropBgH ; altura da janela (windows height)
 
 	invoke GetSystemMetrics,SM_CXSCREEN ; get screen width in pixels
-	invoke TopXY,Wwd,eax
+	invoke TopXY,WWidth,eax
 	mov Wtx, eax
 
 	invoke GetSystemMetrics,SM_CYSCREEN ; get screen height in pixels
-	invoke TopXY,Wht,eax
+	invoke TopXY,WHeigth,eax
 	mov Wty, eax
 
 	; ==================================
@@ -158,7 +157,7 @@ WinMain proc hInst	:DWORD,
 							ADDR szClassName,
 							ADDR szDisplayName,
 							WS_OVERLAPPEDWINDOW,
-							Wtx,Wty,Wwd,Wht,
+							Wtx,Wty,WWidth,WHeigth,
 							NULL,NULL,
 							hInst,NULL
 
@@ -224,18 +223,19 @@ WndProc proc hWin	:DWORD,
 	; ==== fim comandos de menu ====
 
 	; ===== entrada de teclado =====
-	.elseif uMsg == WM_CHAR
+	.elseif uMsg == WM_CHAR ;caso seja um caracter
 		invoke wsprintf,addr buffer,chr$("LETRA =  %c"), wParam
 		invoke MessageBox,hWin,ADDR buffer,ADDR szDisplayName,MB_OK
 
-	.elseif uMsg == WM_KEYDOWN
+	.elseif uMsg == WM_KEYDOWN ; caso seja uma chave (seta)
 		;invoke wsprintf,addr buffer,chr$("Tecla codigo = %d"), wParam
 		;invoke MessageBox,hWin,ADDR buffer,ADDR szDisplayName,MB_OK
-		.if wParam == VK_UP
-				add imgY,10
+		.if wParam == VK_UP ; caso seja o spaco
+				sub birdY,10
+
 		.endif
-		.if wParam == VK_DOWN
-				sub imgY, 10
+		.if wParam == VK_DOWN ; caso seja a seta que aponta para baixo
+				add birdY, 10
 		.endif
 	; === fim entrada de teclado ===
 
@@ -253,49 +253,29 @@ WndProc proc hWin	:DWORD,
 
 	.elseif uMsg == WM_PAINT
 
+		; iniciar seção de desenhar sprites
 		invoke BeginPaint,hWin,ADDR Ps
-		; aqui entra o desejamos desenha, escrever e outros.
-		; há uma outra maneira de fazer isso, mas veremos mais adiante.
-
 		mov    hDC, eax
 
+		; desenhar fundo
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
-		invoke SelectObject, memDC, hBmpHommer
+		invoke SelectObject, memDC, hBmpSprites
 		mov  hOld, eax
-		invoke BitBlt, hDC, 0, 0,550,300, memDC, 10,10, SRCCOPY
+		invoke BitBlt, hDC, 0,0,cropBgW,cropBgH, memDC, 0,0, SRCCOPY
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 
-		; codigo para manipular a imagem bmp
+		; desenhar bird
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
-
-		invoke SelectObject, memDC, hBmpImg
+		invoke SelectObject, memDC, hBmpSprites
 		mov  hOld, eax
-
-		invoke BitBlt, hDC, 10, 100,32,32, memDC, 0,0, SRCCOPY
-
-		invoke BitBlt, hDC, 42, 100,32,32, memDC, 0,32, SRCCOPY
-
-		invoke BitBlt, hDC, 74, 100,32,32, memDC, 0,32, SRCCOPY
-
-		invoke TransparentBlt, hDC,	190,100, 32,32, memDC, \
-									0,32,32,32, CREF_TRANSPARENT
-
-
-		.if contador == 1
-			invoke TransparentBlt, hDC, 100,imgY,	32,32, memDC, \
-													0,0,32,32, CREF_TRANSPARENT
-		.elseif contador == 2
-			invoke TransparentBlt, hDC, 100,imgY,	32,32, memDC, \
-													0,32,32,32, CREF_TRANSPARENT
-			mov  contador ,0
-		.endif
-
+		invoke TransparentBlt, hDC,	birdX, birdY, cropBirdW, cropBirdH, memDC, cropBirdX, cropBirdY, cropBirdW, cropBirdH, CREF_TRANSPARENT
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 
+		; finalizar seção de desenhar sprites
 		invoke EndPaint,hWin,ADDR Ps
 		return  0
 
@@ -308,8 +288,6 @@ WndProc proc hWin	:DWORD,
 	; passed to the WndProc [ hWin ] must be used here for any controls
 	; or child windows.
 	; --------------------------------------------------------------------
-		mov     X,40
-		mov     Y,60
 		mov     imgY,250
 		invoke  CreateEvent, NULL, FALSE, FALSE, NULL
 		mov     hEventStart, eax
@@ -368,7 +346,7 @@ TopXY endp
 
 ; ============================================================
 
-ThreadProc PROC USES ecx Param:DWORD
+ThreadProc proc uses eax Param:DWORD
 
 	invoke WaitForSingleObject, hEventStart, 1000
 	.if eax == WAIT_TIMEOUT
@@ -379,6 +357,6 @@ ThreadProc PROC USES ecx Param:DWORD
 	jmp  ThreadProc
 	ret
 
-ThreadProc ENDP
+ThreadProc endp
 
 end start
