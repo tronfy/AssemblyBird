@@ -45,10 +45,13 @@
 	cropBgW	equ		331
 	cropBgH	equ		589
 
-	cropBirdX	equ	607
-	cropBirdY	equ	147
-	cropBirdW	equ	38
-	cropBirdH	equ	27
+	cropBirdX	equ	607 ; Cordenada x inicio da sprite do passaro 
+	cropBirdY	equ	147 ; Cordenada y inicio da sprite do passaro
+	cropBirdW	equ	38 ; largura da sprite do passaro (width)
+	cropBirdH	equ	27 ; altura da sprite do passaro (height)
+
+	birdMaxVel	equ 20 ; essa e a velocidade maxima que o passaro pode atingir (em pixels pelo eixo y)
+	flapForce	equ -13 ; a forca que ele vai para cima por clique
 
 	CREF_TRANSPARENT  equ 0082597Bh ; Isso filtra as cores de uma imagem
 
@@ -60,6 +63,7 @@
 	buffer			db 128 dup(0)
 	birdX			dd 140 ; essa variavel sera utilizada para determinar a posicao do nosso passaro
 	birdY			dd 200 ;  essa variavel sera utilizada para determinar a posicao do nosso passaro
+	birdVelocity	dd 0
 	msg1			db "Mandou uma mensagem Ok",0
 	contador		dd 0 ;
 	imgY			dd 100 ; so precisamos do y por que o passaro nao sai do lugar, o cenario se move para tras mas ele nao percorre o eixo x
@@ -133,7 +137,7 @@ WinMain proc hInst	:DWORD,
 	mov wc.hCursor,        eax
 	mov wc.hIconSm,        0
 
-	invoke RegisterClassEx, ADDR wc     ; register the window class
+	invoke RegisterClassEx, ADDR wc     ; registrando a classe da janela
 
 	;================================
 	; Centre window at following size
@@ -227,36 +231,29 @@ WndProc proc hWin	:DWORD,
 		invoke wsprintf,addr buffer,chr$("LETRA =  %c"), wParam
 		invoke MessageBox,hWin,ADDR buffer,ADDR szDisplayName,MB_OK
 
-	.elseif uMsg == WM_KEYDOWN ; caso seja uma chave (seta)
-		;invoke wsprintf,addr buffer,chr$("Tecla codigo = %d"), wParam
-		;invoke MessageBox,hWin,ADDR buffer,ADDR szDisplayName,MB_OK
-		.if wParam == VK_UP ; caso seja o spaco
-				sub birdY,10
-
-		.endif
-		.if wParam == VK_DOWN ; caso seja a seta que aponta para baixo
-				add birdY, 10
+	.elseif uMsg == WM_KEYDOWN ; caso seja uma chave
+		.if wParam == VK_UP ; seta para cima
+			; verificar se a tecla foi pressionada nesse tick
+			mov ebx, 40000000h
+			and ebx, lParam
+			; se não, está sendo segurada. ignorar comando
+			jnz ignorar
+			mov birdVelocity, flapForce	; bater as asas
+			ignorar:
 		.endif
 	; === fim entrada de teclado ===
 
 	.elseif uMsg == WM_FINISH
-		; aqui iremos desenhar sem chamar a função InvalideteRect
-		; invoke GetDC, hWnd
-		; mov hDC, eax
-		; invoke ReleaseDC, hWin, hDC
-
 		mov   rect.left, 100
 		mov   rect.top , 100
 		mov   rect.right, 32
 		mov   rect.bottom, 32
-		invoke InvalidateRect, hWnd, NULL, TRUE ;;addr rect, TRUE
-
+		invoke InvalidateRect, hWnd, NULL, TRUE ;addr rect, TRUE
 	.elseif uMsg == WM_PAINT
-
+		
 		; iniciar seção de desenhar sprites
 		invoke BeginPaint,hWin,ADDR Ps
 		mov    hDC, eax
-
 		; desenhar fundo
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
@@ -274,11 +271,10 @@ WndProc proc hWin	:DWORD,
 		invoke TransparentBlt, hDC,	birdX, birdY, cropBirdW, cropBirdH, memDC, cropBirdX, cropBirdY, cropBirdW, cropBirdH, CREF_TRANSPARENT
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
-
+		
 		; finalizar seção de desenhar sprites
 		invoke EndPaint,hWin,ADDR Ps
 		return  0
-
 	.elseif uMsg == WM_CREATE
 	; --------------------------------------------------------------------
 	; This message is sent to WndProc during the CreateWindowEx function
@@ -299,7 +295,6 @@ WndProc proc hWin	:DWORD,
 		mov     contador, 0
 
 	.elseif uMsg == WM_CLOSE
-
 	.elseif uMsg == WM_DESTROY
 	; ----------------------------------------------------------------
 	; This message MUST be processed to cleanly exit the application.
@@ -311,7 +306,6 @@ WndProc proc hWin	:DWORD,
 			invoke PostQuitMessage,NULL
 			return 0
 	.endif
-
 	invoke DefWindowProc,hWin,uMsg,wParam,lParam
 	; --------------------------------------------------------------------
 	; Default window processing is done by the operating system for any
@@ -321,42 +315,48 @@ WndProc proc hWin	:DWORD,
 	; to exit the WndProc procedure before the default window processing
 	; occurs with the call to DefWindowProc().
 	; --------------------------------------------------------------------
-
 	ret
-
 WndProc endp
-
 ; ============================================================
-
 TopXY proc wDim:DWORD, sDim:DWORD
 
 	; ----------------------------------------------------
 	; This procedure calculates the top X & Y co-ordinates
 	; for the CreateWindowEx call in the WinMain procedure
 	; ----------------------------------------------------
-
 	shr sDim, 1      ; divide screen dimension by 2
 	shr wDim, 1      ; divide window dimension by 2
 	mov eax, wDim    ; copy window dimension into eax
 	sub sDim, eax    ; sub half win dimension from half screen dimension
-
 	return sDim
-
 TopXY endp
-
 ; ============================================================
-
+; Essa eh a proc que criamos para influenciar a velocidade que o passaro cai
+; Caso o passaro caia de forma linear, ele se tornara previsivel e o jogo nao tera graca
+; Criamos uma aceleracao para que o passaro nao caia de forma linear e se torne previsivel
+; eh claro, caso a aceleracao influencie a velocidade de forma infinita, nao sera possivel jogar 
+; assim, vamos atribuir uma velocidade maxima que o passaro possa atingir
+GravidadeProc proc
+	mov eax, birdMaxVel ; criamos uma velocidade maxima que o passaro pode atingir
+	mov ebx, birdVelocity ; colocamos em ebx a velocidade atual do passaro
+	cmp eax, ebx ; comparamos a velocidade maxima que o passaro pode atingir com a velocidade atual dele
+	jl	a
+	add birdVelocity, 1
+	a:
+	add birdY, ebx
+	ret
+GravidadeProc endp
+; ============================================================
 ThreadProc proc uses eax Param:DWORD
-
-	invoke WaitForSingleObject, hEventStart, 1000
+	invoke WaitForSingleObject, hEventStart, 33 ; depois de quantos milisegundos iremos aplicar uma mudanca
 	.if eax == WAIT_TIMEOUT
+		; lógica do jogo
 		inc  contador
+		invoke GravidadeProc
+		; invocar atualização de tela
 		invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
-
 	.endif
 	jmp  ThreadProc
 	ret
-
 ThreadProc endp
-
 end start
