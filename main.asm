@@ -30,50 +30,62 @@
 	includelib \masm32\lib\masm32.lib
 
 ; ========= prototypes =========
-	WinMain		PROTO :DWORD,:DWORD,:DWORD,:DWORD
-	WndProc		PROTO :DWORD,:DWORD,:DWORD,:DWORD
-	TopXY		PROTO :DWORD,:DWORD
+	WinMain			PROTO :DWORD,:DWORD,:DWORD,:DWORD
+	WndProc			PROTO :DWORD,:DWORD,:DWORD,:DWORD
+	TopXY			PROTO :DWORD,:DWORD
 
 ; ============================================================
 
 .const
-	ICONE	equ     500
-	WM_FINISH equ WM_USER+100h
+	ICON			equ 500
+	WM_FINISH		equ	WM_USER+100h
 
-	sprites	equ		107
+	; ======= recursos (.rc) =======
 
-	cropBgW	equ		331
-	cropBgH	equ		589
+	sprites			equ	107
 
-	cropBirdX	equ	607 ; Cordenada x inicio da sprite do passaro 
-	cropBirdY	equ	147 ; Cordenada y inicio da sprite do passaro
-	cropBirdW	equ	38 ; largura da sprite do passaro (width)
-	cropBirdH	equ	27 ; altura da sprite do passaro (height)
+	; ======== crop do bmp =========
 
-	birdMaxVel	equ 20 ; essa e a velocidade maxima que o passaro pode atingir (em pixels pelo eixo y)
-	flapForce	equ -13 ; a forca que ele vai para cima por clique
+	; fundo
+	cropBgW			equ	331			; largura
+	cropBgH			equ 589 		; altura
 
-	CREF_TRANSPARENT  equ 0082597Bh ; Isso filtra as cores de uma imagem
+	; pássaro
+	cropBirdX		equ	607			; x origem
+	cropBirdY		equ	147 		; y origem
+	cropBirdW		equ	38			; largura
+	cropBirdH		equ	27			; altura
+
+	; =========== física ===========
+
+	birdMaxVel		equ 20			; velocidade vertical máxima
+	flapForce		equ -13			; forca vertical por clique
+
+	; ===== tempo e intervalos =====
+
+	interCano		equ 30			; intervalo entre canos
+	velCano			equ 10 			; velocidade que os canos percorrem o mapa
+
+	; =========== outros ===========
+
+	CREF_TRANSPARENT equ 0082597Bh	; cor de fundo a ser filtrada
 
 .data
-	szDisplayName	db "Flappy Bird",0 ; esse sera o titulo da janela
+	szDisplayName	db "Flappy Bird",0 ; titulo da janela
 	CommandLine		dd 0
 	hWnd			dd 0
 	hInstance		dd 0
-	buffer			db 128 dup(0)
-	birdX			dd 140 ; essa variavel sera utilizada para determinar a posicao do nosso passaro
-	birdY			dd 200 ;  essa variavel sera utilizada para determinar a posicao do nosso passaro
-	birdVelocity	dd 0
-	msg1			db "Mandou uma mensagem Ok",0
-	contador		dd 0 ;
-	imgY			dd 100 ; so precisamos do y por que o passaro nao sai do lugar, o cenario se move para tras mas ele nao percorre o eixo x
+	birdX			dd 140			; posição x do pássaro
+	birdY			dd 200			; posição y do pássaro
+	birdVelocity	dd 0 			; velocidade do pássaro
+	contador		dd 0 			; conta o numero de frames para calcular a diferenca entre as distancias de canos
 
 .data?
-	hitpoint	POINT <>
-	hitpointEnd	POINT <>
-	threadID	DWORD ?
-	hEventStart	HANDLE ?
-	hBmpSprites	dd ?
+	hitpoint		POINT <>
+	hitpointEnd		POINT <>
+	threadID		DWORD ?
+	hEventStart		HANDLE ?
+	hBmpSprites		dd ?
 
 ; ============================================================
 
@@ -86,14 +98,15 @@ start:
 	invoke	GetCommandLine
 	mov		CommandLine, eax
 
-	; ====== carregar bitmaps ======
+	; carregar bitmap
 	invoke	LoadBitmap, hInstance, sprites
 	mov		hBmpSprites, eax
-	; ==============================
 
-	invoke	WinMain,hInstance,NULL,CommandLine,SW_SHOWDEFAULT	; carregar janela
+	; carregar janela
+	invoke	WinMain,hInstance,NULL,CommandLine,SW_SHOWDEFAULT
 
-	invoke	ExitProcess,eax	; finalizar processo
+	; finalizar processo
+	invoke	ExitProcess,eax
 
 ; ============================================================
 
@@ -102,61 +115,50 @@ WinMain proc hInst	:DWORD,
 					CmdLine   :DWORD,
 					CmdShow   :DWORD
 
-	;====================
-	; Put LOCALs on stack
-	;====================
+	; == colocar valores na stack ==
 
-	LOCAL wc   :WNDCLASSEX
-	LOCAL msg  :MSG
+	LOCAL wc		:WNDCLASSEX
+	LOCAL msg		:MSG
 
-	LOCAL WWidth  :DWORD
-	LOCAL WHeigth  :DWORD
-	LOCAL Wtx  :DWORD
-	LOCAL Wty  :DWORD
+	LOCAL WWidth	:DWORD
+	LOCAL WHeigth	:DWORD
+	LOCAL Wtx		:DWORD
+	LOCAL Wty		:DWORD
 
-	szText szClassName,"Generic_Class"
+	szText szClassName, "flappybird_asm"
 
-	;==================================================
-	; Fill WNDCLASSEX structure with required variables
-	;==================================================
+	; ==== variáveis da janela =====
 
 	mov wc.cbSize,         sizeof WNDCLASSEX
-	mov wc.style,          CS_HREDRAW or CS_VREDRAW \
-													or CS_BYTEALIGNWINDOW
-	mov wc.lpfnWndProc,    offset WndProc      ; address of WndProc
+	mov wc.style,          CS_HREDRAW or CS_VREDRAW or CS_BYTEALIGNWINDOW
+	mov wc.lpfnWndProc,    offset WndProc      	; address of WndProc
 	mov wc.cbClsExtra,     NULL
 	mov wc.cbWndExtra,     NULL
-	m2m wc.hInstance,      hInst               ; instance handle
-	mov wc.hbrBackground,  COLOR_BTNFACE+1     ; system color
+	m2m wc.hInstance,      hInst               	; instance handle
+	mov wc.hbrBackground,  COLOR_BTNFACE+1    	; system color
 	mov wc.lpszMenuName,   NULL
-	mov wc.lpszClassName,  offset szClassName  ; window class name
-	; id do icon no arquivo RC
-	invoke LoadIcon,hInst,500                  ; icon ID   ; resource icon
+	mov wc.lpszClassName,  offset szClassName  	; window class name
+	invoke LoadIcon,hInst,ICON
 	mov wc.hIcon,          eax
-		invoke LoadCursor,NULL,IDC_ARROW         ; system cursor
+		invoke LoadCursor,NULL,IDC_ARROW        ; system cursor
 	mov wc.hCursor,        eax
 	mov wc.hIconSm,        0
 
-	invoke RegisterClassEx, ADDR wc     ; registrando a classe da janela
+	invoke RegisterClassEx, ADDR wc     		; registrando a classe da janela
 
-	;================================
-	; Centre window at following size
-	;================================
+	mov WWidth, cropBgW 						; largura da janela (window width)
+	mov WHeigth, cropBgH 						; altura da janela (window height)
 
-	mov WWidth, cropBgW ; largura da janela (windows width)
-	mov WHeigth, cropBgH ; altura da janela (windows height)
-
-	invoke GetSystemMetrics,SM_CXSCREEN ; get screen width in pixels
+	invoke GetSystemMetrics,SM_CXSCREEN 		; get screen width in pixels
 	invoke TopXY,WWidth,eax
 	mov Wtx, eax
 
-	invoke GetSystemMetrics,SM_CYSCREEN ; get screen height in pixels
+	invoke GetSystemMetrics,SM_CYSCREEN 		; get screen height in pixels
 	invoke TopXY,WHeigth,eax
 	mov Wty, eax
 
-	; ==================================
-	; Create the main application window
-	; ==================================
+	; ======= criar a janela =======
+
 	invoke CreateWindowEx,	WS_EX_OVERLAPPEDWINDOW,
 							ADDR szClassName,
 							ADDR szDisplayName,
@@ -165,24 +167,22 @@ WinMain proc hInst	:DWORD,
 							NULL,NULL,
 							hInst,NULL
 
-	mov   hWnd,eax  ; copy return value into handle DWORD
+	mov   hWnd,eax  							; copy return value into handle DWORD
 
-	invoke LoadMenu,hInst,600                 ; load resource menu
-	invoke SetMenu,hWnd,eax                   ; set it to main window
+	invoke LoadMenu,hInst,600                 	; load resource menu
+	invoke SetMenu,hWnd,eax                   	; set it to main window
 
-	invoke ShowWindow,hWnd,SW_SHOWNORMAL      ; display the window
-	invoke UpdateWindow,hWnd                  ; update the display
+	invoke ShowWindow,hWnd,SW_SHOWNORMAL      	; display the window
+	invoke UpdateWindow,hWnd                  	; update the display
 
-	;===================================
-	; Loop until PostQuitMessage is sent
-	;===================================
+	; == loop até PostQuitMessage ==
 
 	StartLoop:
-		invoke GetMessage,ADDR msg,NULL,0,0         ; get each message
-		cmp eax, 0                                  ; exit if GetMessage()
-		je ExitLoop                                 ; returns zero
-		invoke TranslateMessage, ADDR msg           ; translate it
-		invoke DispatchMessage,  ADDR msg           ; send it to message proc
+		invoke GetMessage,ADDR msg,NULL,0,0     ; get each message
+		cmp eax, 0                              ; exit if GetMessage()
+		je ExitLoop                             ; returns zero
+		invoke TranslateMessage, ADDR msg       ; translate it
+		invoke DispatchMessage,  ADDR msg       ; send it to message proc
 		jmp StartLoop
 	ExitLoop:
 
@@ -218,27 +218,20 @@ WndProc proc hWin	:DWORD,
 									NULL, NORMAL_PRIORITY_CLASS, \
 									ADDR threadID
 			mov     contador, 0
-
-		.elseif wParam == 1900
-			szText TheMsg,"Assembler, Pure & Simple"
-			invoke MessageBox,hWin,ADDR TheMsg,ADDR szDisplayName,MB_OK
-
 		.endif
 	; ==== fim comandos de menu ====
 
 	; ===== entrada de teclado =====
-	.elseif uMsg == WM_CHAR ;caso seja um caracter
-		invoke wsprintf,addr buffer,chr$("LETRA =  %c"), wParam
-		invoke MessageBox,hWin,ADDR buffer,ADDR szDisplayName,MB_OK
+	.elseif uMsg == WM_CHAR ; caso seja um caracter
 
-	.elseif uMsg == WM_KEYDOWN ; caso seja uma chave
-		.if wParam == VK_UP ; seta para cima
-			; verificar se a tecla foi pressionada nesse tick
+	.elseif uMsg == WM_KEYDOWN 					; caso seja uma chave
+		.if wParam == VK_UP 					; seta para cima
+												; verificar se a tecla foi pressionada nesse tick
 			mov ebx, 40000000h
 			and ebx, lParam
-			; se não, está sendo segurada. ignorar comando
+												; se não, está sendo segurada. ignorar comando
 			jnz ignorar
-			mov birdVelocity, flapForce	; bater as asas
+			mov birdVelocity, flapForce			; bater as asas
 			ignorar:
 		.endif
 	; === fim entrada de teclado ===
@@ -250,7 +243,7 @@ WndProc proc hWin	:DWORD,
 		mov   rect.bottom, 32
 		invoke InvalidateRect, hWnd, NULL, TRUE ;addr rect, TRUE
 	.elseif uMsg == WM_PAINT
-		
+
 		; iniciar seção de desenhar sprites
 		invoke BeginPaint,hWin,ADDR Ps
 		mov    hDC, eax
@@ -271,7 +264,7 @@ WndProc proc hWin	:DWORD,
 		invoke TransparentBlt, hDC,	birdX, birdY, cropBirdW, cropBirdH, memDC, cropBirdX, cropBirdY, cropBirdW, cropBirdH, CREF_TRANSPARENT
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
-		
+
 		; finalizar seção de desenhar sprites
 		invoke EndPaint,hWin,ADDR Ps
 		return  0
@@ -284,7 +277,6 @@ WndProc proc hWin	:DWORD,
 	; passed to the WndProc [ hWin ] must be used here for any controls
 	; or child windows.
 	; --------------------------------------------------------------------
-		mov     imgY,250
 		invoke  CreateEvent, NULL, FALSE, FALSE, NULL
 		mov     hEventStart, eax
 
@@ -317,7 +309,9 @@ WndProc proc hWin	:DWORD,
 	; --------------------------------------------------------------------
 	ret
 WndProc endp
+
 ; ============================================================
+
 TopXY proc wDim:DWORD, sDim:DWORD
 
 	; ----------------------------------------------------
@@ -330,23 +324,48 @@ TopXY proc wDim:DWORD, sDim:DWORD
 	sub sDim, eax    ; sub half win dimension from half screen dimension
 	return sDim
 TopXY endp
+
 ; ============================================================
+
 ; Essa eh a proc que criamos para influenciar a velocidade que o passaro cai
 ; Caso o passaro caia de forma linear, ele se tornara previsivel e o jogo nao tera graca
 ; Criamos uma aceleracao para que o passaro nao caia de forma linear e se torne previsivel
-; eh claro, caso a aceleracao influencie a velocidade de forma infinita, nao sera possivel jogar 
+; eh claro, caso a aceleracao influencie a velocidade de forma infinita, nao sera possivel jogar
 ; assim, vamos atribuir uma velocidade maxima que o passaro possa atingir
 GravidadeProc proc
-	mov eax, birdMaxVel ; criamos uma velocidade maxima que o passaro pode atingir
-	mov ebx, birdVelocity ; colocamos em ebx a velocidade atual do passaro
-	cmp eax, ebx ; comparamos a velocidade maxima que o passaro pode atingir com a velocidade atual dele
+	mov eax, birdMaxVel 	; criamos uma velocidade maxima que o passaro pode atingir
+	mov ebx, birdVelocity 	; colocamos em ebx a velocidade atual do passaro
+	cmp eax, ebx 			; comparamos a velocidade maxima que o passaro pode atingir com a velocidade atual dele
 	jl	a
 	add birdVelocity, 1
 	a:
 	add birdY, ebx
 	ret
 GravidadeProc endp
+
 ; ============================================================
+
+PodeSpawnar proc
+	inc contador
+	mov eax, contador 		; variavel responsavel por contar se deve spawnar um cano
+	mov ebx, interCano 		; constante do cano
+	cmp eax, ebx 			; verifica se deve spawnar mais um cano
+	jl	b
+	mov eax, 0 				; reseta o timer
+	;invoke Spawnar			; spawna o cano
+	b:
+	ret
+
+PodeSpawnar endp
+
+; ============================================================
+
+; Spawnar proc
+; 	ret
+; Spawnar endp
+
+; ============================================================
+
 ThreadProc proc uses eax Param:DWORD
 	invoke WaitForSingleObject, hEventStart, 33 ; depois de quantos milisegundos iremos aplicar uma mudanca
 	.if eax == WAIT_TIMEOUT
@@ -359,4 +378,7 @@ ThreadProc proc uses eax Param:DWORD
 	jmp  ThreadProc
 	ret
 ThreadProc endp
+
+; ============================================================
+
 end start

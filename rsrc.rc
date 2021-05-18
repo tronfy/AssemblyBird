@@ -1,27 +1,25 @@
-// o nome deve ser RSRC.RC pois o bat bldall.bat utiliza esse nome e fica mais facil
-// trabalhar
+#define ICONE       500
+#define SPRITES     107
 
-#define ICONE 500
-#define SPRITES  107
+#define APPMENU     600
+#define MENU_EXIT   1000
+#define MENU_ABOUT  1900
 
-// define icone e outros a serem utilizados
+// icone
 ICONE ICON MOVEABLE PURE LOADONCALL DISCARDABLE "FAVICON.ICO"
 
-// INDICA O BITMAP A SER UTILIZADO
-
+// bitmaps
 SPRITES BITMAP MOVEABLE PURE LOADONCALL DISCARDABLE "sprites.bmp"
 
-
-// cria a estrutura do menu
-600 MENUEX MOVEABLE IMPURE LOADONCALL DISCARDABLE
+// menu
+APPMENU MENUEX MOVEABLE IMPURE LOADONCALL DISCARDABLE
 BEGIN
     POPUP "&File", , , 0
     BEGIN
-        MENUITEM "&Mensagem", 1001
-        MENUITEM "&Exit", 1000
+        MENUITEM "&Exit", MENU_EXIT
     END
     POPUP "&Help", , , 0
     BEGIN
-        MENUITEM "&About", 1900
+        MENUITEM "&About", MENU_ABOUT
     END
 END
