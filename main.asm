@@ -156,7 +156,7 @@ WinMain proc hInst	:DWORD,
 	invoke CreateWindowEx,	WS_EX_OVERLAPPEDWINDOW,
 							ADDR szClassName,
 							ADDR szDisplayName,
-							WS_OVERLAPPEDWINDOW,
+							CS_HREDRAW,
 							Wtx,Wty,WWidth,WHeigth,
 							NULL,NULL,
 							hInst,NULL
