@@ -37,11 +37,11 @@
 ; ============================================================
 
 .const
-	ICON			equ 500
 	WM_FINISH		equ	WM_USER+100h
 
 	; ======= recursos (.rc) =======
 
+	ICON			equ 500
 	sprites			equ	107
 
 	; ======== crop do bmp =========
@@ -56,29 +56,55 @@
 	cropBirdW		equ	38			; largura
 	cropBirdH		equ	27			; altura
 
+	; cano de cima
+	cropCanoCX		equ	691			; x origem
+	cropCanoCY		equ	0			; y origem
+	cropCanoCW		equ	63			; largura
+	cropCanoCH		equ	310			; altura
+
+	; cano de baixo
+	cropCanoBX		equ	759			; x origem
+	cropCanoBY		equ	0			; y origem
+	cropCanoBW		equ	60			; largura
+	cropCanoBH		equ	277			; altura
+
 	; =========== física ===========
 
 	birdMaxVel		equ 20			; velocidade vertical máxima
 	flapForce		equ -13			; forca vertical por clique
 
-	; ===== tempo e intervalos =====
+	; ====== margens e offsets =====
 
-	interCano		equ 30			; intervalo entre canos
-	velCano			equ 10 			; velocidade que os canos percorrem o mapa
+	margemEsq		equ -70
+	margemDir		equ cropBgW + 165
+	offsetCanoY		equ 500
+	canoCBaseY		equ -300
+	canoBBaseY		equ 150
 
 	; =========== outros ===========
 
-	CREF_TRANSPARENT equ 0082597Bh	; cor de fundo a ser filtrada
+	CREF_TRANSPARENT equ 0082597Bh			; cor de fundo a ser filtrada
 
 .data
-	szDisplayName	db "Flappy Bird",0 ; titulo da janela
+	; ====== variaveis da tela ======
+	szDisplayName	db "Flappy Bird",0 		; titulo da janela
 	CommandLine		dd 0
 	hWnd			dd 0
 	hInstance		dd 0
-	birdX			dd 140			; posição x do pássaro
-	birdY			dd 200			; posição y do pássaro
-	birdVelocity	dd 0 			; velocidade do pássaro
-	contador		dd 0 			; conta o numero de frames para calcular a diferenca entre as distancias de canos
+	
+	; ======= posicao pássaro =======
+	birdX			dd 140					; x do pássaro
+	birdY			dd 200					; y do pássaro
+
+	; ======== posicao canos ========
+	cano1X			dd cropBgW
+	cano1Y			dd 100
+	cano2X			dd margemDir + 120
+	cano2Y			dd 100
+
+	; ======== velocidade ========
+	birdVelocity	dd 0 					; velocidade do pássaro
+	pipeVelocity	dd 10 					; velocidade do cano
 
 .data?
 	hitpoint		POINT <>
@@ -162,7 +188,7 @@ WinMain proc hInst	:DWORD,
 	invoke CreateWindowEx,	WS_EX_OVERLAPPEDWINDOW,
 							ADDR szClassName,
 							ADDR szDisplayName,
-							CS_HREDRAW,
+							WS_OVERLAPPEDWINDOW, ;CS_HREDRAW,
 							Wtx,Wty,WWidth,WHeigth,
 							NULL,NULL,
 							hInst,NULL
@@ -217,7 +243,6 @@ WndProc proc hWin	:DWORD,
 			invoke CreateThread,	NULL, NULL, eax,  \
 									NULL, NORMAL_PRIORITY_CLASS, \
 									ADDR threadID
-			mov     contador, 0
 		.endif
 	; ==== fim comandos de menu ====
 
@@ -226,27 +251,27 @@ WndProc proc hWin	:DWORD,
 
 	.elseif uMsg == WM_KEYDOWN 					; caso seja uma chave
 		.if wParam == VK_UP 					; seta para cima
-												; verificar se a tecla foi pressionada nesse tick
 			mov ebx, 40000000h
-			and ebx, lParam
-												; se não, está sendo segurada. ignorar comando
-			jnz ignorar
+			and ebx, lParam						; verificar se a tecla foi pressionada nesse tick
+			jnz nao_bater						; se não, está sendo segurada. ignorar comando
 			mov birdVelocity, flapForce			; bater as asas
-			ignorar:
+			nao_bater:
 		.endif
 	; === fim entrada de teclado ===
 
 	.elseif uMsg == WM_FINISH
-		mov   rect.left, 100
-		mov   rect.top , 100
-		mov   rect.right, 32
-		mov   rect.bottom, 32
+		mov rect.left, 100
+		mov	rect.top , 100
+		mov	rect.right, 32
+		mov	rect.bottom, 32
 		invoke InvalidateRect, hWnd, NULL, TRUE ;addr rect, TRUE
+
 	.elseif uMsg == WM_PAINT
 
 		; iniciar seção de desenhar sprites
 		invoke BeginPaint,hWin,ADDR Ps
 		mov    hDC, eax
+
 		; desenhar fundo
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
@@ -265,6 +290,68 @@ WndProc proc hWin	:DWORD,
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 
+		; =========== cano 1 ===========
+		; checar se está dentro da tela
+		mov ebx, cano1X
+		cmp ebx, margemDir
+		jg chk_c2
+		cmp ebx, margemEsq
+		jl chk_c2
+
+		; se sim, desenhar suas partes
+		; cima
+		mov ebx, cano1Y
+		add ebx, canoCBaseY
+		invoke CreateCompatibleDC, hDC
+		mov   memDC, eax
+		invoke SelectObject, memDC, hBmpSprites
+		mov  hOld, eax
+		invoke TransparentBlt, hDC,	cano1X, ebx, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
+		invoke SelectObject,hDC,hOld
+		invoke DeleteDC,memDC
+		; baixo
+		mov ebx, cano1Y
+		add ebx, canoBBaseY
+		invoke CreateCompatibleDC, hDC
+		mov   memDC, eax
+		invoke SelectObject, memDC, hBmpSprites
+		mov  hOld, eax
+		invoke TransparentBlt, hDC,	cano1X, ebx, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
+		invoke SelectObject,hDC,hOld
+		invoke DeleteDC,memDC
+
+		; =========== cano 2 ===========
+		chk_c2:
+		; checar se está dentro da tela
+		mov ebx, cano2X
+		cmp ebx, margemDir
+		jg fim_canos
+		cmp ebx, margemEsq
+		jl fim_canos
+
+		; se sim, desenhar suas partes
+		; cima
+		mov ebx, cano2Y
+		add ebx, canoCBaseY
+		invoke CreateCompatibleDC, hDC
+		mov   memDC, eax
+		invoke SelectObject, memDC, hBmpSprites
+		mov  hOld, eax
+		invoke TransparentBlt, hDC,	cano2X, ebx, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
+		invoke SelectObject,hDC,hOld
+		invoke DeleteDC,memDC
+		; baixo
+		mov ebx, cano2Y
+		add ebx, canoBBaseY
+		invoke CreateCompatibleDC, hDC
+		mov   memDC, eax
+		invoke SelectObject, memDC, hBmpSprites
+		mov  hOld, eax
+		invoke TransparentBlt, hDC,	cano2X, ebx, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
+		invoke SelectObject,hDC,hOld
+		invoke DeleteDC,memDC
+		fim_canos:
+
 		; finalizar seção de desenhar sprites
 		invoke EndPaint,hWin,ADDR Ps
 		return  0
@@ -281,10 +368,7 @@ WndProc proc hWin	:DWORD,
 		mov     hEventStart, eax
 
 		mov eax, offset ThreadProc
-		invoke CreateThread, NULL, NULL, eax,  \
-															NULL, NORMAL_PRIORITY_CLASS, \
-															ADDR threadID
-		mov     contador, 0
+		invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR threadID
 
 	.elseif uMsg == WM_CLOSE
 	.elseif uMsg == WM_DESTROY
@@ -345,33 +429,46 @@ GravidadeProc endp
 
 ; ============================================================
 
-PodeSpawnar proc
-	inc contador
-	mov eax, contador 		; variavel responsavel por contar se deve spawnar um cano
-	mov ebx, interCano 		; constante do cano
-	cmp eax, ebx 			; verifica se deve spawnar mais um cano
-	jl	b
-	mov eax, 0 				; reseta o timer
-	;invoke Spawnar			; spawna o cano
-	b:
+; proc para spawnar canos
+; sempre que um cano sai da tela pela esquerda,
+; ele é recolocado fora da tela na direita
+;
+Spawnar proc
+	mov eax, cano1X
+	cmp eax, margemEsq 		; se o cano 1 estiver fora da tela
+	jg cano2
+	mov eax, margemDir		; resetá-lo para a direita da tela
+	mov cano1X, eax
+
+	cano2:
+	mov eax, cano2X
+	cmp eax, margemEsq		; se o cano 2 estiver fora da tela
+	jg spawn_ret
+	mov eax, margemDir		; resetá-lo para a direita da tela
+	mov cano2X, eax
+
+	spawn_ret:
 	ret
+Spawnar endp
 
-PodeSpawnar endp
 
-; ============================================================
+; proc responsavel por mover os canos pela tela
 
-; Spawnar proc
-; 	ret
-; Spawnar endp
-
+MoverPilares proc
+	mov eax, pipeVelocity
+	sub cano1X, eax
+	sub cano2X, eax
+	ret
+MoverPilares endp
 ; ============================================================
 
 ThreadProc proc uses eax Param:DWORD
 	invoke WaitForSingleObject, hEventStart, 33 ; depois de quantos milisegundos iremos aplicar uma mudanca
 	.if eax == WAIT_TIMEOUT
 		; lógica do jogo
-		inc  contador
 		invoke GravidadeProc
+		invoke Spawnar
+		invoke MoverPilares
 		; invocar atualização de tela
 		invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
 	.endif
@@ -382,3 +479,8 @@ ThreadProc endp
 ; ============================================================
 
 end start
+
+; Fazer os canos se moverem
+; Fazer as colisões
+; Fazer telas de Game Over e Início
+; Guardar a pontuação
