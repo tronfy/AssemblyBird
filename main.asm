@@ -15,8 +15,12 @@
 	option casemap :none
 
 ; === includes e bibliotecas ===
+
+	include \masm32\include\windows.inc
+    include \masm32\macros\macros.asm
 	include \masm32\include\masm32rt.inc
 	include \masm32\include\msimg32.inc
+	include \masm32\include\user32.inc
 
 	includelib \masm32\lib\user32.lib
 	includelib \masm32\lib\kernel32.lib
@@ -437,10 +441,9 @@ CheckColisao proc
 	; fazemos verificações para determinar
 	; se há intersecções. cada bloco descreve
 	; os pontos utilizados e a verificação
-	; sendo feita, cada ponto tem 2 valores 
+	; sendo feita, cada ponto tem 2 valores
 	; qual um ja foi verificado ou eh irrelevante
 	; para o momento
-
 
 	; P(W,_) e C(0,_)
 	; se está à esquerda
@@ -448,35 +451,34 @@ CheckColisao proc
 	mov ebx, birdX
 	add ebx, cropBirdW
 	cmp ebx, eax
-	jl	col_c2
+	jle	col_c2
 
 	; P(0,_), C(W,_)
 	; se está à direita
 	mov eax, cano1X
-	mov ebx, birdX
 	add eax, cropCanoCW
+	mov ebx, birdX
 	cmp ebx, eax
-	jg	col_c2
+	jge	col_c2
 
 	; P(_,0), C(_,H)
 	; se está em baixo
 	mov eax, cano1Y
-	;add eax, canoCBaseY
+	add eax, canoCBaseY
 	add eax, cropCanoCH
 	mov ebx, birdY
 	cmp ebx, eax
-	jg	col_c2
+	jge	col_c2
 
 	; P(_,H), B(_,0)
 	; se está acima
 	mov eax, cano1Y
-	;add eax, canoBBaseY
+	add eax, canoBBaseY
 	mov ebx, birdY
 	add ebx, cropBirdY
 	cmp ebx, eax
-	jl	col_c2
+	jle	col_c2
 	invoke Colisao
-	jmp fim_colisao
 
 	; cano 2
 	col_c2:
@@ -486,7 +488,7 @@ CheckColisao proc
 	mov ebx, birdX
 	add ebx, cropBirdW
 	cmp ebx, eax
-	jl	fim_colisao
+	jle	fim_colisao
 
 	; P(0,_), C(W,_)
 	; se está à direita
@@ -494,25 +496,25 @@ CheckColisao proc
 	mov ebx, birdX
 	add eax, cropCanoCW
 	cmp ebx, eax
-	jg	fim_colisao
+	jge	fim_colisao
 
 	; P(_,0), C(_,H)
 	; se está em baixo
 	mov eax, cano2Y
-	;add eax, canoCBaseY
+	add eax, canoCBaseY
 	add eax, cropCanoCH
 	mov ebx, birdY
 	cmp ebx, eax
-	jg	fim_colisao
+	jge	fim_colisao
 
 	; P(_,H), B(_,0)
 	; se está acima
 	mov eax, cano2Y
-	;add eax, canoBBaseY
+	add eax, canoBBaseY
 	mov ebx, birdY
 	add ebx, cropBirdY
 	cmp ebx, eax
-	jl	fim_colisao
+	jle	fim_colisao
 	invoke Colisao
 
 	fim_colisao:
@@ -559,6 +561,7 @@ ThreadProc proc uses eax Param:DWORD
 	.if eax == WAIT_TIMEOUT
 		; lógica do jogo
 		invoke GravidadeProc
+		invoke CheckColisao
 		invoke Spawnar
 		invoke MoverPilares
 		; invocar atualização de tela
