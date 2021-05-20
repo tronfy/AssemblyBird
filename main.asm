@@ -65,7 +65,7 @@
 	; cano de baixo
 	cropCanoBX		equ	759			; x origem
 	cropCanoBY		equ	0			; y origem
-	cropCanoBW		equ	60			; largura
+	cropCanoBW		equ	63			; largura
 	cropCanoBH		equ	277			; altura
 
 	; =========== física ===========
@@ -91,7 +91,7 @@
 	CommandLine		dd 0
 	hWnd			dd 0
 	hInstance		dd 0
-	
+
 	; ======= posicao pássaro =======
 	birdX			dd 140					; x do pássaro
 	birdY			dd 200					; y do pássaro
@@ -107,8 +107,6 @@
 	pipeVelocity	dd 10 					; velocidade do cano
 
 .data?
-	hitpoint		POINT <>
-	hitpointEnd		POINT <>
 	threadID		DWORD ?
 	hEventStart		HANDLE ?
 	hBmpSprites		dd ?
@@ -240,9 +238,7 @@ WndProc proc hWin	:DWORD,
 
 		.elseif wParam == 1001
 			mov eax, offset ThreadProc
-			invoke CreateThread,	NULL, NULL, eax,  \
-									NULL, NORMAL_PRIORITY_CLASS, \
-									ADDR threadID
+			invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR threadID
 		.endif
 	; ==== fim comandos de menu ====
 
@@ -427,6 +423,102 @@ GravidadeProc proc
 	ret
 GravidadeProc endp
 
+Colisao proc
+	mov birdY, 1000
+	ret
+Colisao endp
+
+; comparamos se ele esta na area do cano em termos de x
+; depois, comparamos se ele colidiu em termos de y
+CheckColisao proc
+	; para detectar colisões, definimos uma
+	; caixa de colisão determinada pelos 4
+	; pontos extremos dos sprites. depois,
+	; fazemos verificações para determinar
+	; se há intersecções. cada bloco descreve
+	; os pontos utilizados e a verificação
+	; sendo feita, cada ponto tem 2 valores 
+	; qual um ja foi verificado ou eh irrelevante
+	; para o momento
+
+
+	; P(W,_) e C(0,_)
+	; se está à esquerda
+	mov eax, cano1X
+	mov ebx, birdX
+	add ebx, cropBirdW
+	cmp ebx, eax
+	jl	col_c2
+
+	; P(0,_), C(W,_)
+	; se está à direita
+	mov eax, cano1X
+	mov ebx, birdX
+	add eax, cropCanoCW
+	cmp ebx, eax
+	jg	col_c2
+
+	; P(_,0), C(_,H)
+	; se está em baixo
+	mov eax, cano1Y
+	;add eax, canoCBaseY
+	add eax, cropCanoCH
+	mov ebx, birdY
+	cmp ebx, eax
+	jg	col_c2
+
+	; P(_,H), B(_,0)
+	; se está acima
+	mov eax, cano1Y
+	;add eax, canoBBaseY
+	mov ebx, birdY
+	add ebx, cropBirdY
+	cmp ebx, eax
+	jl	col_c2
+	invoke Colisao
+	jmp fim_colisao
+
+	; cano 2
+	col_c2:
+	; P(W,_) e C(0,_)
+	; se está à esquerda
+	mov eax, cano2X
+	mov ebx, birdX
+	add ebx, cropBirdW
+	cmp ebx, eax
+	jl	fim_colisao
+
+	; P(0,_), C(W,_)
+	; se está à direita
+	mov eax, cano2X
+	mov ebx, birdX
+	add eax, cropCanoCW
+	cmp ebx, eax
+	jg	fim_colisao
+
+	; P(_,0), C(_,H)
+	; se está em baixo
+	mov eax, cano2Y
+	;add eax, canoCBaseY
+	add eax, cropCanoCH
+	mov ebx, birdY
+	cmp ebx, eax
+	jg	fim_colisao
+
+	; P(_,H), B(_,0)
+	; se está acima
+	mov eax, cano2Y
+	;add eax, canoBBaseY
+	mov ebx, birdY
+	add ebx, cropBirdY
+	cmp ebx, eax
+	jl	fim_colisao
+	invoke Colisao
+
+	fim_colisao:
+	ret
+CheckColisao endp
+
 ; ============================================================
 
 ; proc para spawnar canos
@@ -480,7 +572,7 @@ ThreadProc endp
 
 end start
 
-; Fazer os canos se moverem
 ; Fazer as colisões
 ; Fazer telas de Game Over e Início
 ; Guardar a pontuação
+; rng de altura dos canos
