@@ -664,7 +664,6 @@ ThreadProc endp
 
 end start
 
-; Fazer as colisões
 ; Fazer telas de Game Over e Início
 ; Guardar a pontuação
 ; rng de altura dos canos
