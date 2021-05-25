@@ -99,12 +99,20 @@
 	; ======= posicao pássaro =======
 	birdX			dd 140					; x do pássaro
 	birdY			dd 200					; y do pássaro
+	colisao			dd 0
 
 	; ======== posicao canos ========
 	cano1X			dd cropBgW
 	cano1Y			dd 100
 	cano2X			dd margemDir + 120
 	cano2Y			dd 100
+
+	; === posicoes virtual canos ===
+
+	cano1VirtYC		dd 0
+	cano1VirtYB		dd 0
+	cano2VirtYC		dd 0
+	cano2VirtYB		dd 0
 
 	; ======== velocidade ========
 	birdVelocity	dd 0 					; velocidade do pássaro
@@ -225,12 +233,14 @@ WndProc proc hWin	:DWORD,
 					wParam :DWORD,
 					lParam :DWORD
 
-	LOCAL hDC    :DWORD
-	LOCAL Ps     :PAINTSTRUCT
-	LOCAL rect   :RECT
-	LOCAL Font   :DWORD
-	LOCAL Font2  :DWORD
-	LOCAL hOld   :DWORD
+	LOCAL hDC		:DWORD
+	LOCAL Ps		:PAINTSTRUCT
+	LOCAL hPen		:DWORD
+	LOCAL hOldPen	:DWORD
+	LOCAL rect		:RECT
+	LOCAL Font		:DWORD
+	LOCAL Font2		:DWORD
+	LOCAL hOld		:DWORD
 
 	LOCAL memDC  :DWORD
 
@@ -245,9 +255,6 @@ WndProc proc hWin	:DWORD,
 			invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR threadID
 		.endif
 	; ==== fim comandos de menu ====
-
-	; ===== entrada de teclado =====
-	.elseif uMsg == WM_CHAR ; caso seja um caracter
 
 	.elseif uMsg == WM_KEYDOWN 					; caso seja uma chave
 		.if wParam == VK_UP 					; seta para cima
@@ -302,55 +309,125 @@ WndProc proc hWin	:DWORD,
 		; cima
 		mov ebx, cano1Y
 		add ebx, canoCBaseY
+		mov cano1VirtYC, ebx
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
 		invoke SelectObject, memDC, hBmpSprites
 		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano1X, ebx, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
+		invoke TransparentBlt, hDC,	cano1X, cano1VirtYC, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 		; baixo
 		mov ebx, cano1Y
 		add ebx, canoBBaseY
+		mov cano1VirtYB, ebx
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
 		invoke SelectObject, memDC, hBmpSprites
 		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano1X, ebx, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
+		invoke TransparentBlt, hDC,	cano1X, cano1VirtYB, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 
 		; =========== cano 2 ===========
 		chk_c2:
 		; checar se está dentro da tela
-		mov ebx, cano2X
-		cmp ebx, margemDir
-		jg fim_canos
-		cmp ebx, margemEsq
-		jl fim_canos
+		;mov ebx, cano2X
+		;cmp ebx, margemDir
+		;jg fim_canos
+		;cmp ebx, margemEsq
+		;jl fim_canos
 
 		; se sim, desenhar suas partes
 		; cima
 		mov ebx, cano2Y
 		add ebx, canoCBaseY
+		mov cano2VirtYC, ebx
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
 		invoke SelectObject, memDC, hBmpSprites
 		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano2X, ebx, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
+		invoke TransparentBlt, hDC,	cano2X, cano2VirtYC, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 		; baixo
 		mov ebx, cano2Y
 		add ebx, canoBBaseY
+		mov cano2VirtYB, ebx
 		invoke CreateCompatibleDC, hDC
 		mov   memDC, eax
 		invoke SelectObject, memDC, hBmpSprites
 		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano2X, ebx, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
+		invoke TransparentBlt, hDC,	cano2X, cano2VirtYB, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 		fim_canos:
+
+		; ; =========== debug ============
+		; invoke CreatePen, PS_SOLID, 4, Blue
+		; mov hPen, eax
+
+		; ; cano 1 cima
+		; invoke SelectObject, hDC, hPen
+		; mov eax, hOldPen
+		; mov ebx, cano1X
+		; add ebx, cropCanoCW
+		; mov ecx, cano1VirtYC
+		; add ecx, cropCanoCH
+		; invoke Rectangle, hDC, cano1X, cano1VirtYC, ebx, ecx
+		; invoke SelectObject, hDC, hOldPen
+
+		; ; cano 1 baixo
+		; invoke SelectObject, hDC, hPen
+		; mov eax, hOldPen
+		; mov ebx, cano1X
+		; add ebx, cropCanoBW
+		; mov ecx, cano1VirtYB
+		; add ecx, cropCanoBH
+		; invoke Rectangle, hDC, cano1X, cano1VirtYB, ebx, ecx
+		; invoke SelectObject, hDC, hOldPen
+
+		; invoke CreatePen, PS_SOLID, 4, Yellow
+		; mov hPen, eax
+
+		; ; cano 2 cima
+		; invoke SelectObject, hDC, hPen
+		; mov eax, hOldPen
+		; mov ebx, cano2X
+		; add ebx, cropCanoCW
+		; mov ecx, cano2VirtYC
+		; add ecx, cropCanoCH
+		; invoke Rectangle, hDC, cano2X, cano2VirtYC, ebx, ecx
+		; invoke SelectObject, hDC, hOldPen
+
+		; ; cano 2 baixo
+		; invoke SelectObject, hDC, hPen
+		; mov eax, hOldPen
+		; mov ebx, cano2X
+		; add ebx, cropCanoBW
+		; mov ecx, cano2VirtYB
+		; add ecx, cropCanoBH
+		; invoke Rectangle, hDC, cano2X, cano2VirtYB, ebx, ecx
+		; invoke SelectObject, hDC, hOldPen
+
+		; ; pássaro
+		; cmp colisao, 0
+		; jnz tem_colisao
+		; invoke CreatePen, PS_SOLID, 4, Green
+		; jmp cont_pen
+		; tem_colisao:
+		; invoke CreatePen, PS_SOLID, 4, Red
+		; cont_pen:
+		; mov hPen, eax
+
+		; invoke SelectObject, hDC, hPen
+		; mov eax, hOldPen
+		; mov ebx, birdX
+		; add ebx, cropBirdW
+		; mov ecx, birdY
+		; add ecx, cropBirdH
+		; invoke Rectangle, hDC, birdX, birdY, ebx, ecx
+		; invoke SelectObject, hDC, hOldPen
 
 		; finalizar seção de desenhar sprites
 		invoke EndPaint,hWin,ADDR Ps
@@ -428,97 +505,109 @@ GravidadeProc proc
 GravidadeProc endp
 
 Colisao proc
-	mov birdY, 1000
+	;mov birdY, 1000
+	mov colisao, 1
 	ret
 Colisao endp
 
 ; comparamos se ele esta na area do cano em termos de x
 ; depois, comparamos se ele colidiu em termos de y
 CheckColisao proc
-	; para detectar colisões, definimos uma
-	; caixa de colisão determinada pelos 4
-	; pontos extremos dos sprites. depois,
-	; fazemos verificações para determinar
-	; se há intersecções. cada bloco descreve
-	; os pontos utilizados e a verificação
-	; sendo feita, cada ponto tem 2 valores
-	; qual um ja foi verificado ou eh irrelevante
-	; para o momento
+	mov colisao, 0
 
-	; P(W,_) e C(0,_)
-	; se está à esquerda
-	mov eax, cano1X
-	mov ebx, birdX
-	add ebx, cropBirdW
-	cmp ebx, eax
-	jle	col_c2
+	; _X = _X0 + _W
+	; _Y = _Y0 + _H
 
-	; P(0,_), C(W,_)
-	; se está à direita
-	mov eax, cano1X
-	add eax, cropCanoCW
-	mov ebx, birdX
-	cmp ebx, eax
-	jge	col_c2
+	; esquerda passaro - direita cano | direita passaro - esquerda cano
+	; if (PX0 > QX) && (PX < QX0) ; caso a primeira condição for true, continua o cod, caso contrário, pula pro final
+	; não há colisao, retorna (ou faz prox cano)
 
-	; P(_,0), C(_,H)
-	; se está em baixo
-	mov eax, cano1Y
-	add eax, canoCBaseY
-	add eax, cropCanoCH
-	mov ebx, birdY
-	cmp ebx, eax
-	jge	col_c2
+	; PX0 = birdX
+	; PY0 = birdY
+	; PX = birdX + cropBirdW
+	; PY = birdY + cropBirdH
 
-	; P(_,H), B(_,0)
-	; se está acima
-	mov eax, cano1Y
-	add eax, canoBBaseY
-	mov ebx, birdY
-	add ebx, cropBirdY
-	cmp ebx, eax
-	jle	col_c2
+	; QX0 = canoX
+	; QX = canoX + cropCanoX
+	; CY0 = canoVirtYC
+	; CY = canoVirtYC + cropCanoCH
+
+	; PX < Q1X0 -> x não contém (sem colisão)
+	; pássaro ainda não chegou no cano
+	mov eax, birdX
+	add eax, cropBirdW
+	mov ebx, cano1X
+	cmp eax, ebx
+	jl	checar_cano2
+
+	; PX0 > Q1X -> x não contém (sem colisão)
+	; pássaro já passou do cano
+	mov eax, birdX
+	mov ebx, cano1X
+	add ebx, cropCanoCW
+	cmp eax, ebx
+	jge	checar_cano2
+
+	; PY0 > C1Y -> (sem colisão ACIMA)
+	; pássaro está abaixo do cano de cima
+	mov eax, birdY
+	mov ebx, cano1VirtYC
+	add ebx, cropCanoCH
+	cmp eax, ebx
+	jl	colisao_cano1
+
+	; PY < B1Y0 -> (sem colisão ABAIXO)
+	; pássaro está acima do cano de baixo
+	mov eax, birdY
+	add eax, cropBirdH
+	mov ebx, cano1VirtYB
+	cmp eax, ebx
+	jl	checar_cano2
+
+	colisao_cano1:
 	invoke Colisao
+	jmp fim_colisao
 
-	; cano 2
-	col_c2:
-	; P(W,_) e C(0,_)
-	; se está à esquerda
-	mov eax, cano2X
-	mov ebx, birdX
-	add ebx, cropBirdW
-	cmp ebx, eax
-	jle	fim_colisao
+	checar_cano2:
+	; PX < Q2X0 -> x não contém (sem colisão)
+	; pássaro ainda não chegou no cano
+	mov eax, birdX
+	add eax, cropBirdW
+	mov ebx, cano2X
+	cmp eax, ebx
+	jl	fim_colisao
 
-	; P(0,_), C(W,_)
-	; se está à direita
-	mov eax, cano2X
-	mov ebx, birdX
-	add eax, cropCanoCW
-	cmp ebx, eax
+	; PX0 > Q2X -> x não contém (sem colisão)
+	; pássaro já passou do cano
+	mov eax, birdX
+	mov ebx, cano2X
+	add ebx, cropCanoCW
+	cmp eax, ebx
 	jge	fim_colisao
 
-	; P(_,0), C(_,H)
-	; se está em baixo
-	mov eax, cano2Y
-	add eax, canoCBaseY
-	add eax, cropCanoCH
-	mov ebx, birdY
-	cmp ebx, eax
-	jge	fim_colisao
+	; PY0 > C2Y -> (sem colisão ACIMA)
+	; pássaro está abaixo do cano de cima
+	mov eax, birdY
+	mov ebx, cano2VirtYC
+	add ebx, cropCanoCH
+	cmp eax, ebx
+	jl	colisao_cano2
 
-	; P(_,H), B(_,0)
-	; se está acima
-	mov eax, cano2Y
-	add eax, canoBBaseY
-	mov ebx, birdY
-	add ebx, cropBirdY
-	cmp ebx, eax
-	jle	fim_colisao
+	; PY < B2Y0 -> (sem colisão ABAIXO)
+	; pássaro está acima do cano de baixo
+	mov eax, birdY
+	add eax, cropBirdH
+	mov ebx, cano2VirtYB
+	cmp eax, ebx
+	jl	fim_colisao
+
+	colisao_cano2:
 	invoke Colisao
+	jmp fim_colisao
 
 	fim_colisao:
 	ret
+
 CheckColisao endp
 
 ; ============================================================
@@ -557,7 +646,7 @@ MoverPilares endp
 ; ============================================================
 
 ThreadProc proc uses eax Param:DWORD
-	invoke WaitForSingleObject, hEventStart, 33 ; depois de quantos milisegundos iremos aplicar uma mudanca
+	invoke WaitForSingleObject, hEventStart, 33 ; 1s / 30fps = 33,3ms / frame
 	.if eax == WAIT_TIMEOUT
 		; lógica do jogo
 		invoke GravidadeProc
