@@ -10,19 +10,17 @@
 ; ============================================================
 
 ; == instruções para o masm32 ==
-	.386
-	.model flat, stdcall
-	option casemap :none
+	;.386
+	;.model flat, stdcall
+	;option casemap :none
 
 ; === includes e bibliotecas ===
-
-	include \masm32\include\windows.inc
-    include \masm32\macros\macros.asm
 	include \masm32\include\masm32rt.inc
 	include \masm32\include\msimg32.inc
-	include \masm32\include\user32.inc
+	include \masm32\include\cryptdll.inc
+	include \masm32\include\winmm.inc
 
-	includelib \masm32\lib\user32.lib
+	includelib \masm32\lib\cryptdll.lib
 	includelib \masm32\lib\kernel32.lib
 	includelib \masm32\lib\gdi32.lib
 	includelib \masm32\lib\comctl32.lib
@@ -32,10 +30,13 @@
 	includelib \masm32\lib\oleaut32.lib
 	includelib \masm32\lib\msvcrt.lib
 	includelib \masm32\lib\masm32.lib
+	includelib \masm32\lib\user32.lib
+	includelib \masm32\lib\winmm.lib
 
 ; ========= prototypes =========
 	WinMain			PROTO :DWORD,:DWORD,:DWORD,:DWORD
 	WndProc			PROTO :DWORD,:DWORD,:DWORD,:DWORD
+	;PlaySoundA		PROTO, pszSound:PTR BYTE, hmod:DWORD, fdwSound:DWORD
 	TopXY			PROTO :DWORD,:DWORD
 
 ; ============================================================
@@ -90,6 +91,7 @@
 	CREF_TRANSPARENT equ 0082597Bh			; cor de fundo a ser filtrada
 
 .data
+
 	; ====== variaveis da tela ======
 	szDisplayName	db "Flappy Bird",0 		; titulo da janela
 	CommandLine		dd 0
@@ -117,6 +119,14 @@
 	; ======== velocidade ========
 	birdVelocity	dd 0 					; velocidade do pássaro
 	pipeVelocity	dd 10 					; velocidade do cano
+
+	pontuacao		dd 0
+
+	; ======= música e sons ========
+	musBfg			byte "bfg_division.wav",0
+
+	sfxFlap			byte "sfx_flap.wav",0
+	sfxCoin			byte "sfx_coin.wav",0
 
 .data?
 	threadID		DWORD ?
@@ -239,7 +249,6 @@ WndProc proc hWin	:DWORD,
 	LOCAL hOldPen	:DWORD
 	LOCAL rect		:RECT
 	LOCAL Font		:DWORD
-	LOCAL Font2		:DWORD
 	LOCAL hOld		:DWORD
 
 	LOCAL memDC  :DWORD
@@ -262,6 +271,7 @@ WndProc proc hWin	:DWORD,
 			and ebx, lParam						; verificar se a tecla foi pressionada nesse tick
 			jnz nao_bater						; se não, está sendo segurada. ignorar comando
 			mov birdVelocity, flapForce			; bater as asas
+			invoke PlaySoundA, offset sfxFlap, NULL, SND_ASYNC
 			nao_bater:
 		.endif
 	; === fim entrada de teclado ===
@@ -363,6 +373,24 @@ WndProc proc hWin	:DWORD,
 		invoke DeleteDC,memDC
 		fim_canos:
 
+		; ========= pontuacao ==========
+		invoke GetClientRect, hWnd, addr rect
+		mov   rect.left, 0
+		mov   rect.top , 0
+		mov   rect.right, cropBgW - 10
+		mov   rect.bottom, 100
+		invoke CreateFont, 48, 24, NULL, NULL, 300,FALSE,NULL,NULL, \
+					DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS, \
+					PROOF_QUALITY,DEFAULT_PITCH or FF_DONTCARE, \
+					SADD("flappybird_font")
+		mov Font, eax
+		invoke SelectObject, hDC,Font
+		mov   hOld, eax
+		invoke SetBkMode, hDC, TRANSPARENT
+		invoke SetTextColor,hDC,00ffffffh
+		szText txtPont, "0"
+		invoke DrawText, hDC, addr txtPont, -1, addr rect, DT_SINGLELINE or DT_CENTER or DT_VCENTER
+
 		; ; =========== debug ============
 		; invoke CreatePen, PS_SOLID, 4, Blue
 		; mov hPen, eax
@@ -446,6 +474,8 @@ WndProc proc hWin	:DWORD,
 
 		mov eax, offset ThreadProc
 		invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR threadID
+
+		;invoke PlaySoundA, offset musBfg, NULL, SND_ASYNC
 
 	.elseif uMsg == WM_CLOSE
 	.elseif uMsg == WM_DESTROY
@@ -622,6 +652,8 @@ Spawnar proc
 	jg cano2
 	mov eax, margemDir		; resetá-lo para a direita da tela
 	mov cano1X, eax
+	inc pontuacao			; dar um ponto ao jogador
+	invoke PlaySoundA, offset sfxCoin, NULL, SND_ASYNC
 
 	cano2:
 	mov eax, cano2X
@@ -629,6 +661,8 @@ Spawnar proc
 	jg spawn_ret
 	mov eax, margemDir		; resetá-lo para a direita da tela
 	mov cano2X, eax
+	inc pontuacao			; dar um ponto ao jogador
+	invoke PlaySoundA, offset sfxCoin, NULL, SND_ASYNC
 
 	spawn_ret:
 	ret
@@ -659,6 +693,12 @@ ThreadProc proc uses eax Param:DWORD
 	jmp  ThreadProc
 	ret
 ThreadProc endp
+
+; ============================================================
+
+Random proc
+	ret
+Random endp
 
 ; ============================================================
 
