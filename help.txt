@@ -11,5 +11,9 @@ exemplo:
 	$env:Path += ";c:\masm32\bin;c:\masm32\lib;c:\masm32\"
 
 
-executar:
+build:
 	.\build.ps1
+
+
+executar:
+	.\build\main.exe
