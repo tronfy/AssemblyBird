@@ -1,0 +1,15 @@
+processo de build
+
+
+no powershell, liberar execução de scripts usando:
+	set-executionpolicy unrestricted
+
+
+caso necessário, adicionar binários do masm ao path usando:
+	$env:Path += ";"
+exemplo:
+	$env:Path += ";c:\masm32\bin;c:\masm32\lib;c:\masm32\"
+
+
+executar:
+	.\build.ps1

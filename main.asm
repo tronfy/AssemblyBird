@@ -77,7 +77,7 @@
 	; =========== física ===========
 
 	birdMaxVel		equ 20			; velocidade vertical máxima
-	flapForce		equ -18			; forca vertical por clique
+	flapForce		equ -15			; forca vertical por clique
 
 	; ====== margens e offsets =====
 
@@ -312,7 +312,7 @@ WndProc proc hWin	:DWORD,
 		.if wParam == 1000
 			invoke SendMessage,hWin,WM_SYSCOMMAND,SC_CLOSE,NULL
 		.elseif wParam == 1900
-			invoke wsprintf,addr buffer,chr$("Flappy Bird",13,10,"em MASM assembly",13,10,"por 19164, 19188, 19191",13,10,"25/05/2021")
+			invoke wsprintf,addr buffer,chr$("Flappy Bird",13,10,"em MASM assembly",13,10,"por:",13,10,"19164 - Bruno Arnone Franchi,",13,10,"19188 - Mateus Stolze Vazquez,",13,10,"19191 - Nicolas Denadai Schmidt",13,10,"25/05/2021")
             invoke MessageBox,hWin,ADDR buffer,ADDR szDisplayName,MB_OK
 		.endif
 	; ==== fim comandos de menu ====
@@ -543,8 +543,8 @@ WndProc proc hWin	:DWORD,
 			mov   hOld, eax
 			invoke SetBkMode, hDC, TRANSPARENT
 			invoke SetTextColor,hDC,00ffffffh
-			szText txtGameOver, "Game Over"
-			invoke DrawText, hDC, addr txtGameOver, -1, addr rect, DT_SINGLELINE or DT_CENTER or DT_VCENTER
+			invoke wsprintf,addr buffer, chr$("score: %d"), pontuacao
+			invoke DrawText, hDC, addr buffer, -1, addr rect, DT_SINGLELINE or DT_CENTER or DT_VCENTER
 		.endif
 
 		invoke EndPaint,hWin,ADDR Ps
