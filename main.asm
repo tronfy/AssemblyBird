@@ -1,7 +1,7 @@
 ; ============================================================
 ; Flappy Bird
 ; ============================================================
-; 11/05/2021 -> ??/??/2021
+; 11/05/2021 -> 27/05/2021
 ; TI501 - Linguagem de Montagem
 ; ============================================================
 ; 19164 Bruno Arnone Franchi
@@ -38,6 +38,7 @@
 	WndProc			PROTO :DWORD,:DWORD,:DWORD,:DWORD
 	;PlaySoundA		PROTO, pszSound:PTR BYTE, hmod:DWORD, fdwSound:DWORD
 	TopXY			PROTO :DWORD,:DWORD
+	GetLocalTime	PROTO :DWORD
 
 ; ============================================================
 
@@ -76,7 +77,7 @@
 	; =========== física ===========
 
 	birdMaxVel		equ 20			; velocidade vertical máxima
-	flapForce		equ -13			; forca vertical por clique
+	flapForce		equ -18			; forca vertical por clique
 
 	; ====== margens e offsets =====
 
@@ -91,7 +92,6 @@
 	CREF_TRANSPARENT equ 0082597Bh			; cor de fundo a ser filtrada
 
 .data
-
 	; ====== variaveis da tela ======
 	szDisplayName	db "Flappy Bird",0 		; titulo da janela
 	CommandLine		dd 0
@@ -118,26 +118,79 @@
 
 	; ======== velocidade ========
 	birdVelocity	dd 0 					; velocidade do pássaro
-	pipeVelocity	dd 10 					; velocidade do cano
+	pipeVelocity	dd 6 					; velocidade do cano
 
 	pontuacao		dd 0
-
+	stringPontos	byte "   "
 	; ======= música e sons ========
 	musBfg			byte "bfg_division.wav",0
 
 	sfxFlap			byte "sfx_flap.wav",0
 	sfxCoin			byte "sfx_coin.wav",0
 
+	; =========== lógica ===========
+	gameState		dd 0					; 0 título; 1 em jogo; 2 game over
+
+	; ============ prng ============
+	seed			dd 0
+	prngAtual		dd 0
+
+	; outros
+	buffer			db 128 dup(0)
+
 .data?
 	threadID		DWORD ?
 	hEventStart		HANDLE ?
 	hBmpSprites		dd ?
+	LPSYSTEMTIME STRUCT
+    	wYear       WORD ?
+    	wMonth      WORD ?
+    	wDayOfWeek  WORD ?
+    	wDay        WORD ?
+    	wHour       WORD ?
+    	wMinute     WORD ?
+    	wSecond     WORD ?
+    	wMilliseconds WORD ?
+	LPSYSTEMTIME ENDS
+	localTime LPSYSTEMTIME <>
 
 ; ============================================================
 
 .code
 
+PRNG proc
+	mov eax, 7
+	mov ebx, prngAtual
+	mul ebx
+	add eax, 3
+	mov prngAtual, eax
+	ret
+PRNG endp
+
+; ============================================================
+
 start:
+	; gerar seed do prng
+	; para isso, usamos o tempo atual do computador,
+	; e usamos o valor de milissegundos+1 para a seed
+	; com isso, garantimos uma seed entre 1 e 1000
+	invoke GetLocalTime, ADDR localTime
+	movzx eax, localTime.wMilliseconds
+	add eax, 1
+	mov seed, eax
+	mov prngAtual, eax
+
+	invoke PRNG
+	movzx ecx, al
+	add ecx, 80
+	mov cano1Y, ecx
+
+	invoke PRNG
+	movzx ecx, al
+	add ecx, 80
+	mov cano2Y, ecx
+
+	; handles
 	invoke	GetModuleHandle, NULL
 	mov		hInstance, eax
 
@@ -258,21 +311,37 @@ WndProc proc hWin	:DWORD,
 
 		.if wParam == 1000
 			invoke SendMessage,hWin,WM_SYSCOMMAND,SC_CLOSE,NULL
-
-		.elseif wParam == 1001
-			mov eax, offset ThreadProc
-			invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR threadID
+		.elseif wParam == 1900
+			invoke wsprintf,addr buffer,chr$("Flappy Bird",13,10,"em MASM assembly",13,10,"por 19164, 19188, 19191",13,10,"25/05/2021")
+            invoke MessageBox,hWin,ADDR buffer,ADDR szDisplayName,MB_OK
 		.endif
 	; ==== fim comandos de menu ====
 
-	.elseif uMsg == WM_KEYDOWN 					; caso seja uma chave
+	.elseif uMsg == WM_KEYDOWN 					; tecla foi pressionada
 		.if wParam == VK_UP 					; seta para cima
+			mov eax, gameState
+			cmp eax, 1
+			jne nao_em_jogo
 			mov ebx, 40000000h
-			and ebx, lParam						; verificar se a tecla foi pressionada nesse tick
+			and ebx, lParam						; verificar se a tecla foi pressionada nesse frame
 			jnz nao_bater						; se não, está sendo segurada. ignorar comando
 			mov birdVelocity, flapForce			; bater as asas
 			invoke PlaySoundA, offset sfxFlap, NULL, SND_ASYNC
 			nao_bater:
+			jmp fim_teclas
+
+			nao_em_jogo:
+			mov birdVelocity, 0
+			mov birdY, 200
+			mov eax, cropBgW
+			mov cano1X, eax
+			mov eax, margemDir
+			add eax, 120
+			mov cano2X, eax
+			mov pontuacao, 0
+			mov gameState, 1
+
+			fim_teclas:
 		.endif
 	; === fim entrada de teclado ===
 
@@ -298,217 +367,206 @@ WndProc proc hWin	:DWORD,
 		invoke SelectObject,hDC,hOld
 		invoke DeleteDC,memDC
 
-		; desenhar bird
-		invoke CreateCompatibleDC, hDC
-		mov   memDC, eax
-		invoke SelectObject, memDC, hBmpSprites
-		mov  hOld, eax
-		invoke TransparentBlt, hDC,	birdX, birdY, cropBirdW, cropBirdH, memDC, cropBirdX, cropBirdY, cropBirdW, cropBirdH, CREF_TRANSPARENT
-		invoke SelectObject,hDC,hOld
-		invoke DeleteDC,memDC
+		mov ebx, gameState
 
-		; =========== cano 1 ===========
-		; checar se está dentro da tela
-		mov ebx, cano1X
-		cmp ebx, margemDir
-		jg chk_c2
-		cmp ebx, margemEsq
-		jl chk_c2
+		.if ebx == 0		; titulo
+			invoke GetClientRect, hWnd, addr rect
+			mov   rect.left, 0
+			mov   rect.top , 0
+			mov   rect.right, cropBgW - 10
+			mov   rect.bottom, 100
+			invoke CreateFont, 48, 24, NULL, NULL, 300,FALSE,NULL,NULL, \
+						DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS, \
+						PROOF_QUALITY,DEFAULT_PITCH or FF_DONTCARE, \
+						SADD("flappybird_font")
+			mov Font, eax
+			invoke SelectObject, hDC,Font
+			mov   hOld, eax
+			invoke SetBkMode, hDC, TRANSPARENT
+			invoke SetTextColor,hDC,00ffffffh
+			szText txtTitulo, "Flappy Bird"
+			invoke DrawText, hDC, addr txtTitulo, -1, addr rect, DT_SINGLELINE or DT_CENTER or DT_VCENTER
+		.elseif ebx == 1	; em jogo
+			; desenhar bird
+			invoke CreateCompatibleDC, hDC
+			mov   memDC, eax
+			invoke SelectObject, memDC, hBmpSprites
+			mov  hOld, eax
+			invoke TransparentBlt, hDC,	birdX, birdY, cropBirdW, cropBirdH, memDC, cropBirdX, cropBirdY, cropBirdW, cropBirdH, CREF_TRANSPARENT
+			invoke SelectObject,hDC,hOld
+			invoke DeleteDC,memDC
 
-		; se sim, desenhar suas partes
-		; cima
-		mov ebx, cano1Y
-		add ebx, canoCBaseY
-		mov cano1VirtYC, ebx
-		invoke CreateCompatibleDC, hDC
-		mov   memDC, eax
-		invoke SelectObject, memDC, hBmpSprites
-		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano1X, cano1VirtYC, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
-		invoke SelectObject,hDC,hOld
-		invoke DeleteDC,memDC
-		; baixo
-		mov ebx, cano1Y
-		add ebx, canoBBaseY
-		mov cano1VirtYB, ebx
-		invoke CreateCompatibleDC, hDC
-		mov   memDC, eax
-		invoke SelectObject, memDC, hBmpSprites
-		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano1X, cano1VirtYB, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
-		invoke SelectObject,hDC,hOld
-		invoke DeleteDC,memDC
+			; =========== cano 1 ===========
+			; cima
+			mov ebx, cano1Y
+			add ebx, canoCBaseY
+			mov cano1VirtYC, ebx
+			invoke CreateCompatibleDC, hDC
+			mov   memDC, eax
+			invoke SelectObject, memDC, hBmpSprites
+			mov  hOld, eax
+			invoke TransparentBlt, hDC,	cano1X, cano1VirtYC, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
+			invoke SelectObject,hDC,hOld
+			invoke DeleteDC,memDC
+			; baixo
+			mov ebx, cano1Y
+			add ebx, canoBBaseY
+			mov cano1VirtYB, ebx
+			invoke CreateCompatibleDC, hDC
+			mov   memDC, eax
+			invoke SelectObject, memDC, hBmpSprites
+			mov  hOld, eax
+			invoke TransparentBlt, hDC,	cano1X, cano1VirtYB, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
+			invoke SelectObject,hDC,hOld
+			invoke DeleteDC,memDC
 
-		; =========== cano 2 ===========
-		chk_c2:
-		; checar se está dentro da tela
-		;mov ebx, cano2X
-		;cmp ebx, margemDir
-		;jg fim_canos
-		;cmp ebx, margemEsq
-		;jl fim_canos
+			; =========== cano 2 ===========
+			; cima
+			mov ebx, cano2Y
+			add ebx, canoCBaseY
+			mov cano2VirtYC, ebx
+			invoke CreateCompatibleDC, hDC
+			mov   memDC, eax
+			invoke SelectObject, memDC, hBmpSprites
+			mov  hOld, eax
+			invoke TransparentBlt, hDC,	cano2X, cano2VirtYC, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
+			invoke SelectObject,hDC,hOld
+			invoke DeleteDC,memDC
+			; baixo
+			mov ebx, cano2Y
+			add ebx, canoBBaseY
+			mov cano2VirtYB, ebx
+			invoke CreateCompatibleDC, hDC
+			mov   memDC, eax
+			invoke SelectObject, memDC, hBmpSprites
+			mov  hOld, eax
+			invoke TransparentBlt, hDC,	cano2X, cano2VirtYB, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
+			invoke SelectObject,hDC,hOld
+			invoke DeleteDC,memDC
+			fim_canos:
 
-		; se sim, desenhar suas partes
-		; cima
-		mov ebx, cano2Y
-		add ebx, canoCBaseY
-		mov cano2VirtYC, ebx
-		invoke CreateCompatibleDC, hDC
-		mov   memDC, eax
-		invoke SelectObject, memDC, hBmpSprites
-		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano2X, cano2VirtYC, cropCanoCW, cropCanoCH, memDC, cropCanoCX, cropCanoCY, cropCanoCW, cropCanoCH, CREF_TRANSPARENT
-		invoke SelectObject,hDC,hOld
-		invoke DeleteDC,memDC
-		; baixo
-		mov ebx, cano2Y
-		add ebx, canoBBaseY
-		mov cano2VirtYB, ebx
-		invoke CreateCompatibleDC, hDC
-		mov   memDC, eax
-		invoke SelectObject, memDC, hBmpSprites
-		mov  hOld, eax
-		invoke TransparentBlt, hDC,	cano2X, cano2VirtYB, cropCanoBW, cropCanoBH, memDC, cropCanoBX, cropCanoBY, cropCanoBW, cropCanoBH, CREF_TRANSPARENT
-		invoke SelectObject,hDC,hOld
-		invoke DeleteDC,memDC
-		fim_canos:
+			; ========= pontuacao ==========
+			invoke GetClientRect, hWnd, addr rect
+			mov   rect.left, 0
+			mov   rect.top , 0
+			mov   rect.right, cropBgW - 10
+			mov   rect.bottom, 100
+			invoke CreateFont, 48, 24, NULL, NULL, 300,FALSE,NULL,NULL, \
+						DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS, \
+						PROOF_QUALITY,DEFAULT_PITCH or FF_DONTCARE, \
+						SADD("flappybird_font")
+			mov Font, eax
+			invoke SelectObject, hDC,Font
+			mov   hOld, eax
+			invoke SetBkMode, hDC, TRANSPARENT
+			invoke SetTextColor,hDC,00ffffffh
+			invoke wsprintf,addr buffer, chr$("%d"), pontuacao
+			invoke DrawText, hDC, addr buffer, -1, addr rect, DT_SINGLELINE or DT_CENTER or DT_VCENTER
 
-		; ========= pontuacao ==========
-		invoke GetClientRect, hWnd, addr rect
-		mov   rect.left, 0
-		mov   rect.top , 0
-		mov   rect.right, cropBgW - 10
-		mov   rect.bottom, 100
-		invoke CreateFont, 48, 24, NULL, NULL, 300,FALSE,NULL,NULL, \
-					DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS, \
-					PROOF_QUALITY,DEFAULT_PITCH or FF_DONTCARE, \
-					SADD("flappybird_font")
-		mov Font, eax
-		invoke SelectObject, hDC,Font
-		mov   hOld, eax
-		invoke SetBkMode, hDC, TRANSPARENT
-		invoke SetTextColor,hDC,00ffffffh
-		szText txtPont, "0"
-		invoke DrawText, hDC, addr txtPont, -1, addr rect, DT_SINGLELINE or DT_CENTER or DT_VCENTER
+			; ; =========== debug ============
+			; invoke CreatePen, PS_SOLID, 4, Blue
+			; mov hPen, eax
 
-		; ; =========== debug ============
-		; invoke CreatePen, PS_SOLID, 4, Blue
-		; mov hPen, eax
+			; ; cano 1 cima
+			; invoke SelectObject, hDC, hPen
+			; mov eax, hOldPen
+			; mov ebx, cano1X
+			; add ebx, cropCanoCW
+			; mov ecx, cano1VirtYC
+			; add ecx, cropCanoCH
+			; invoke Rectangle, hDC, cano1X, cano1VirtYC, ebx, ecx
+			; invoke SelectObject, hDC, hOldPen
 
-		; ; cano 1 cima
-		; invoke SelectObject, hDC, hPen
-		; mov eax, hOldPen
-		; mov ebx, cano1X
-		; add ebx, cropCanoCW
-		; mov ecx, cano1VirtYC
-		; add ecx, cropCanoCH
-		; invoke Rectangle, hDC, cano1X, cano1VirtYC, ebx, ecx
-		; invoke SelectObject, hDC, hOldPen
+			; ; cano 1 baixo
+			; invoke SelectObject, hDC, hPen
+			; mov eax, hOldPen
+			; mov ebx, cano1X
+			; add ebx, cropCanoBW
+			; mov ecx, cano1VirtYB
+			; add ecx, cropCanoBH
+			; invoke Rectangle, hDC, cano1X, cano1VirtYB, ebx, ecx
+			; invoke SelectObject, hDC, hOldPen
 
-		; ; cano 1 baixo
-		; invoke SelectObject, hDC, hPen
-		; mov eax, hOldPen
-		; mov ebx, cano1X
-		; add ebx, cropCanoBW
-		; mov ecx, cano1VirtYB
-		; add ecx, cropCanoBH
-		; invoke Rectangle, hDC, cano1X, cano1VirtYB, ebx, ecx
-		; invoke SelectObject, hDC, hOldPen
+			; invoke CreatePen, PS_SOLID, 4, Yellow
+			; mov hPen, eax
 
-		; invoke CreatePen, PS_SOLID, 4, Yellow
-		; mov hPen, eax
+			; ; cano 2 cima
+			; invoke SelectObject, hDC, hPen
+			; mov eax, hOldPen
+			; mov ebx, cano2X
+			; add ebx, cropCanoCW
+			; mov ecx, cano2VirtYC
+			; add ecx, cropCanoCH
+			; invoke Rectangle, hDC, cano2X, cano2VirtYC, ebx, ecx
+			; invoke SelectObject, hDC, hOldPen
 
-		; ; cano 2 cima
-		; invoke SelectObject, hDC, hPen
-		; mov eax, hOldPen
-		; mov ebx, cano2X
-		; add ebx, cropCanoCW
-		; mov ecx, cano2VirtYC
-		; add ecx, cropCanoCH
-		; invoke Rectangle, hDC, cano2X, cano2VirtYC, ebx, ecx
-		; invoke SelectObject, hDC, hOldPen
+			; ; cano 2 baixo
+			; invoke SelectObject, hDC, hPen
+			; mov eax, hOldPen
+			; mov ebx, cano2X
+			; add ebx, cropCanoBW
+			; mov ecx, cano2VirtYB
+			; add ecx, cropCanoBH
+			; invoke Rectangle, hDC, cano2X, cano2VirtYB, ebx, ecx
+			; invoke SelectObject, hDC, hOldPen
 
-		; ; cano 2 baixo
-		; invoke SelectObject, hDC, hPen
-		; mov eax, hOldPen
-		; mov ebx, cano2X
-		; add ebx, cropCanoBW
-		; mov ecx, cano2VirtYB
-		; add ecx, cropCanoBH
-		; invoke Rectangle, hDC, cano2X, cano2VirtYB, ebx, ecx
-		; invoke SelectObject, hDC, hOldPen
+			; ; pássaro
+			; cmp colisao, 0
+			; jnz tem_colisao
+			; invoke CreatePen, PS_SOLID, 4, Green
+			; jmp cont_pen
+			; tem_colisao:
+			; invoke CreatePen, PS_SOLID, 4, Red
+			; cont_pen:
+			; mov hPen, eax
 
-		; ; pássaro
-		; cmp colisao, 0
-		; jnz tem_colisao
-		; invoke CreatePen, PS_SOLID, 4, Green
-		; jmp cont_pen
-		; tem_colisao:
-		; invoke CreatePen, PS_SOLID, 4, Red
-		; cont_pen:
-		; mov hPen, eax
+			; invoke SelectObject, hDC, hPen
+			; mov eax, hOldPen
+			; mov ebx, birdX
+			; add ebx, cropBirdW
+			; mov ecx, birdY
+			; add ecx, cropBirdH
+			; invoke Rectangle, hDC, birdX, birdY, ebx, ecx
+			; invoke SelectObject, hDC, hOldPen
+		.elseif ebx == 2	; game over
+			invoke GetClientRect, hWnd, addr rect
+			mov   rect.left, 0
+			mov   rect.top , 0
+			mov   rect.right, cropBgW - 10
+			mov   rect.bottom, 100
+			invoke CreateFont, 48, 24, NULL, NULL, 300,FALSE,NULL,NULL, \
+						DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS, \
+						PROOF_QUALITY,DEFAULT_PITCH or FF_DONTCARE, \
+						SADD("flappybird_font")
+			mov Font, eax
+			invoke SelectObject, hDC,Font
+			mov   hOld, eax
+			invoke SetBkMode, hDC, TRANSPARENT
+			invoke SetTextColor,hDC,00ffffffh
+			szText txtGameOver, "Game Over"
+			invoke DrawText, hDC, addr txtGameOver, -1, addr rect, DT_SINGLELINE or DT_CENTER or DT_VCENTER
+		.endif
 
-		; invoke SelectObject, hDC, hPen
-		; mov eax, hOldPen
-		; mov ebx, birdX
-		; add ebx, cropBirdW
-		; mov ecx, birdY
-		; add ecx, cropBirdH
-		; invoke Rectangle, hDC, birdX, birdY, ebx, ecx
-		; invoke SelectObject, hDC, hOldPen
-
-		; finalizar seção de desenhar sprites
 		invoke EndPaint,hWin,ADDR Ps
 		return  0
 	.elseif uMsg == WM_CREATE
-	; --------------------------------------------------------------------
-	; This message is sent to WndProc during the CreateWindowEx function
-	; call and is processed before it returns. This is used as a position
-	; to start other items such as controls. IMPORTANT, the handle for the
-	; CreateWindowEx call in the WinMain does not yet exist so the HANDLE
-	; passed to the WndProc [ hWin ] must be used here for any controls
-	; or child windows.
-	; --------------------------------------------------------------------
 		invoke  CreateEvent, NULL, FALSE, FALSE, NULL
 		mov     hEventStart, eax
 
 		mov eax, offset ThreadProc
 		invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR threadID
-
-		;invoke PlaySoundA, offset musBfg, NULL, SND_ASYNC
-
 	.elseif uMsg == WM_CLOSE
 	.elseif uMsg == WM_DESTROY
-	; ----------------------------------------------------------------
-	; This message MUST be processed to cleanly exit the application.
-	; Calling the PostQuitMessage() function makes the GetMessage()
-	; function in the WinMain() main loop return ZERO which exits the
-	; application correctly. If this message is not processed properly
-	; the window disappears but the code is left in memory.
-	; ----------------------------------------------------------------
-			invoke PostQuitMessage,NULL
-			return 0
+		invoke PostQuitMessage,NULL
+		return 0
 	.endif
 	invoke DefWindowProc,hWin,uMsg,wParam,lParam
-	; --------------------------------------------------------------------
-	; Default window processing is done by the operating system for any
-	; message that is not processed by the application in the WndProc
-	; procedure. If the application requires other than default processing
-	; it executes the code when the message is trapped and returns ZERO
-	; to exit the WndProc procedure before the default window processing
-	; occurs with the call to DefWindowProc().
-	; --------------------------------------------------------------------
 	ret
 WndProc endp
 
 ; ============================================================
 
 TopXY proc wDim:DWORD, sDim:DWORD
-
-	; ----------------------------------------------------
-	; This procedure calculates the top X & Y co-ordinates
-	; for the CreateWindowEx call in the WinMain procedure
-	; ----------------------------------------------------
 	shr sDim, 1      ; divide screen dimension by 2
 	shr wDim, 1      ; divide window dimension by 2
 	mov eax, wDim    ; copy window dimension into eax
@@ -524,19 +582,20 @@ TopXY endp
 ; eh claro, caso a aceleracao influencie a velocidade de forma infinita, nao sera possivel jogar
 ; assim, vamos atribuir uma velocidade maxima que o passaro possa atingir
 GravidadeProc proc
-	mov eax, birdMaxVel 	; criamos uma velocidade maxima que o passaro pode atingir
-	mov ebx, birdVelocity 	; colocamos em ebx a velocidade atual do passaro
-	cmp eax, ebx 			; comparamos a velocidade maxima que o passaro pode atingir com a velocidade atual dele
+	; se o pássaro não atingiu velocidade máxima
+	mov eax, birdMaxVel
+	mov ebx, birdVelocity
+	cmp eax, ebx
 	jl	a
-	add birdVelocity, 1
+	add birdVelocity, 2	; continuar acelerando
 	a:
 	add birdY, ebx
 	ret
 GravidadeProc endp
 
 Colisao proc
-	;mov birdY, 1000
-	mov colisao, 1
+	;mov colisao, 1 ; debug
+	mov gameState, 2
 	ret
 Colisao endp
 
@@ -547,10 +606,6 @@ CheckColisao proc
 
 	; _X = _X0 + _W
 	; _Y = _Y0 + _H
-
-	; esquerda passaro - direita cano | direita passaro - esquerda cano
-	; if (PX0 > QX) && (PX < QX0) ; caso a primeira condição for true, continua o cod, caso contrário, pula pro final
-	; não há colisao, retorna (ou faz prox cano)
 
 	; PX0 = birdX
 	; PY0 = birdY
@@ -652,6 +707,10 @@ Spawnar proc
 	jg cano2
 	mov eax, margemDir		; resetá-lo para a direita da tela
 	mov cano1X, eax
+	invoke PRNG
+	movzx ecx, al
+	add ecx, 80
+	mov cano1Y, ecx
 	inc pontuacao			; dar um ponto ao jogador
 	invoke PlaySoundA, offset sfxCoin, NULL, SND_ASYNC
 
@@ -661,6 +720,10 @@ Spawnar proc
 	jg spawn_ret
 	mov eax, margemDir		; resetá-lo para a direita da tela
 	mov cano2X, eax
+	invoke PRNG
+	movzx ecx, al
+	add ecx, 80
+	mov cano2Y, ecx
 	inc pontuacao			; dar um ponto ao jogador
 	invoke PlaySoundA, offset sfxCoin, NULL, SND_ASYNC
 
@@ -682,11 +745,20 @@ MoverPilares endp
 ThreadProc proc uses eax Param:DWORD
 	invoke WaitForSingleObject, hEventStart, 33 ; 1s / 30fps = 33,3ms / frame
 	.if eax == WAIT_TIMEOUT
-		; lógica do jogo
-		invoke GravidadeProc
-		invoke CheckColisao
-		invoke Spawnar
-		invoke MoverPilares
+
+		mov eax, gameState
+		.if eax == 0
+			; tela de inicio
+		.elseif eax == 1
+			; lógica do jogo
+			invoke GravidadeProc
+			invoke CheckColisao
+			invoke Spawnar
+			invoke MoverPilares
+		.elseif eax == 2
+			; game over
+		.endif
+
 		; invocar atualização de tela
 		invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
 	.endif
@@ -696,14 +768,4 @@ ThreadProc endp
 
 ; ============================================================
 
-Random proc
-	ret
-Random endp
-
-; ============================================================
-
 end start
-
-; Fazer telas de Game Over e Início
-; Guardar a pontuação
-; rng de altura dos canos
